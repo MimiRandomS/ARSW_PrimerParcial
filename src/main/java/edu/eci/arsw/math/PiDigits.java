@@ -1,5 +1,8 @@
 package edu.eci.arsw.math;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+
 ///  <summary>
 ///  An implementation of the Bailey-Borwein-Plouffe formula for calculating hexadecimal
 ///  digits of pi.
@@ -7,18 +10,16 @@ package edu.eci.arsw.math;
 ///  *** Translated from C# code: https://github.com/mmoroney/DigitsOfPi ***
 ///  </summary>
 public class PiDigits {
+    private static ArrayList<Worker> workers = new ArrayList<>();
 
-    private static int DigitsPerSum = 8;
-    private static double Epsilon = 1e-17;
-
-    
     /**
      * Returns a range of hexadecimal digits of pi.
+     *
      * @param start The starting location of the range.
      * @param count The number of digits to return
      * @return An array containing the hexadecimal digits.
      */
-    public static byte[] getDigits(int start, int count) {
+    public static String getDigits(int start, int count, int numThreads) {
         if (start < 0) {
             throw new RuntimeException("Invalid Interval");
         }
@@ -27,87 +28,52 @@ public class PiDigits {
             throw new RuntimeException("Invalid Interval");
         }
 
-        byte[] digits = new byte[count];
-        double sum = 0;
-
-        for (int i = 0; i < count; i++) {
-            if (i % DigitsPerSum == 0) {
-                sum = 4 * sum(1, start)
-                        - 2 * sum(4, start)
-                        - sum(5, start)
-                        - sum(6, start);
-
-                start += DigitsPerSum;
-            }
-
-            sum = 16 * (sum - Math.floor(sum));
-            digits[i] = (byte) sum;
+        int increment = count / numThreads;
+        int intervalA = start;
+        int intervalB = increment;
+        for (int i = 0; i < numThreads; i++) {
+            System.out.println(intervalA + "   " + intervalB + "   " + increment);
+            workers.add(new Worker(intervalA, intervalB, increment + 1));
+            intervalA = intervalB;
+            if (i == numThreads - 1) intervalB = count;
+            else intervalB += increment;
         }
 
-        return digits;
+        for (Worker worker : workers) {
+            worker.start();
+        }
+
+        for (Worker worker : workers) {
+            try {
+                worker.join();
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        }
+
+        StringBuilder b = new StringBuilder("");
+        for (int i = 0; i < workers.size(); i++) {
+            byte[] byteWorker = workers.get(i).getDigitsWorker();
+            b.append(bytesToHex(byteWorker).substring(0, byteWorker.length - 1));
+        }
+        return b.toString();
     }
 
-    /// <summary>
-    /// Returns the sum of 16^(n - k)/(8 * k + m) from 0 to k.
-    /// </summary>
-    /// <param name="m"></param>
-    /// <param name="n"></param>
-    /// <returns></returns>
-    private static double sum(int m, int n) {
-        double sum = 0;
-        int d = m;
-        int power = n;
+    private final static char[] hexArray = "0123456789ABCDEF".toCharArray();
 
-        while (true) {
-            double term;
-
-            if (power > 0) {
-                term = (double) hexExponentModulo(power, d) / d;
-            } else {
-                term = Math.pow(16, power) / d;
-                if (term < Epsilon) {
-                    break;
-                }
-            }
-
-            sum += term;
-            power--;
-            d += 8;
+    public static String bytesToHex(byte[] bytes) {
+        char[] hexChars = new char[bytes.length * 2];
+        for (int j = 0; j < bytes.length; j++) {
+            int v = bytes[j] & 0xFF;
+            hexChars[j * 2] = hexArray[v >>> 4];
+            hexChars[j * 2 + 1] = hexArray[v & 0x0F];
         }
-
-        return sum;
+        StringBuilder sb=new StringBuilder();
+        for (int i=0;i<hexChars.length;i=i+2){
+            sb.append(hexChars[i+1]);
+        }
+        return sb.toString();
     }
 
-    /// <summary>
-    /// Return 16^p mod m.
-    /// </summary>
-    /// <param name="p"></param>
-    /// <param name="m"></param>
-    /// <returns></returns>
-    private static int hexExponentModulo(int p, int m) {
-        int power = 1;
-        while (power * 2 <= p) {
-            power *= 2;
-        }
-
-        int result = 1;
-
-        while (power > 0) {
-            if (p >= power) {
-                result *= 16;
-                result %= m;
-                p -= power;
-            }
-
-            power /= 2;
-
-            if (power > 0) {
-                result *= result;
-                result %= m;
-            }
-        }
-
-        return result;
-    }
 
 }
